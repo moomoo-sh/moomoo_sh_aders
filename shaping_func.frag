@@ -212,10 +212,21 @@ void main() {
     float row = 4.0;
     
     vec2 st = gl_FragCoord.xy/u_resolution;
+    // pour garder un ratio 1:1 (carré) pour notre grille plutôt qu'elle s'étire selon l'écran :
+        // st -= 0.5; // on centre (0,0) pour effectuer le scaling
+        // // on normalise / scale selon la plus petite dimension pour un ratio 1:1
+        // // exemple : si notre largeur est plus petite que notre hauteur, on divise par la largeur 
+        // // on obtient largeur = 1.0 et hauteur > 1.0
+        // // on utilise quand même entre 0.0 et 1.0 donc la largeur de l'image sera remplie et la hauteur contiendra de l'espace vide, car des valeurs seront > 1.0
+        // st *= u_resolution/(u_resolution.x < u_resolution.y ? u_resolution.x : u_resolution.y);
+        // st += 0.5; // on redéplace (0,0) suite au scale pour centrer la grille au milieu de l'écran
+        // // la suite d'opérations si dessus pourrait aussi être remplacée par une matrice ?!?
+        // if (st.x < 0.0 || st.y < 0.0 || st.x >= 1.0 || st.y >= 1.0) discard;
     st.x *= column;
     st.y *= row;
     ivec2 coord = ivec2(st);
-    st = mod(st, 1.0); // mod(..., 1.0) -> garde uniquement la partie décimale
+    // st = mod(st, 1.0); // mod(..., 1.0) -> garde uniquement la partie décimale
+    st = fract(st); // fract(x) est équivalent à mod(x,1.0)
 
     float y = shaping_func(coord, st.x);
     float pct = plot_v2(st, y);
@@ -224,19 +235,24 @@ void main() {
     vec3 plot_color = vec3(1.0,float(coord.y)/(row-1.0),float(coord.x)/(column-1.0));
     vec3 color = (1.0-pct)*bg_color + pct*plot_color;
 
-    float circle_radius = 0.05;
     float cell_num = mod(u_time, column*row); // pour savoir la cellule dans la grille 4x4 (0...15) selon le temps
     float cell_x = mod(cell_num, column); // pour savoir la position x de la cellule (0...3)
     float cell_y = (cell_num-cell_x)/row; // pour savoir la position y de la cellule (0...3) ex : x=2 -> 14-2 = 12 -> 12/4 = 3 -> y=3
     ivec2 circle_coord = ivec2(int(cell_x), int(cell_y));
-    float time_x = mod(u_time, 1.0);
 
     if (SHOW_ALL_CELLS || coord == circle_coord) {
+        float time_x = fract(u_time);
+        float circle_radius = 0.08;
+
         float circle_y = shaping_func(coord, time_x);
-        float circle_pct = float(length(vec2(time_x, circle_y)-st) <= circle_radius);
+        float pix = 1.5*row/u_resolution.y;
+        float dist = length((vec2(time_x, circle_y)-st)*u_resolution/u_resolution.y);
+        // float circle_pct = step(circle_radius, dist); // no antialiasing
+        float circle_pct = smoothstep(circle_radius-pix, circle_radius, dist);
 
         vec3 circle_color = vec3(1.0-circle_y);
-        color = (1.0-circle_pct)*color + circle_pct*circle_color;
+        // mix(x,y,a) est équivalent à (1-a)*x + a*y
+        color = mix(circle_color, color, circle_pct);
     }
 
     gl_FragColor = vec4(color, 1.0);
